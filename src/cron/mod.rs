@@ -363,4 +363,42 @@ mod tests {
         let security = SecurityPolicy::from_config(&config.autonomy, &config.workspace_dir);
         assert!(security.is_command_allowed("echo safe"));
     }
+
+    #[test]
+    fn update_tz_alone_sets_timezone() {
+        let tmp = TempDir::new().unwrap();
+        let config = test_config(&tmp);
+
+        let job = add_shell_job(
+            &config,
+            None,
+            Schedule::Cron {
+                expr: "*/5 * * * *".into(),
+                tz: None,
+            },
+            "echo test",
+        )
+        .unwrap();
+
+        handle_command(
+            crate::CronCommands::Update {
+                id: job.id.clone(),
+                expression: None,
+                tz: Some("America/Los_Angeles".into()),
+                command: None,
+                name: None,
+            },
+            &config,
+        )
+        .unwrap();
+
+        let updated = get_job(&config, &job.id).unwrap();
+        assert_eq!(
+            updated.schedule,
+            Schedule::Cron {
+                expr: "*/5 * * * *".into(),
+                tz: Some("America/Los_Angeles".into()),
+            }
+        );
+    }
 }

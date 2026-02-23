@@ -131,6 +131,7 @@ impl ScreenshotTool {
                 success: false,
                 output: String::new(),
                 error: Some("Filename contains characters unsafe for shell execution".into()),
+                error_kind: None,
             });
         }
 
@@ -152,6 +153,7 @@ impl ScreenshotTool {
                 success: false,
                 output: String::new(),
                 error: Some("Screenshot not supported on this platform".into()),
+                error_kind: None,
             });
         }
 
@@ -169,47 +171,45 @@ impl ScreenshotTool {
         let mut saw_spawnable_command = false;
         let mut last_failure: Option<String> = None;
 
-        for mut cmd_args in commands {
-            if cmd_args.is_empty() {
-                continue;
-            }
-            let program = cmd_args.remove(0);
-            let result = tokio::time::timeout(
-                Duration::from_secs(SCREENSHOT_TIMEOUT_SECS),
-                tokio::process::Command::new(&program)
-                    .args(&cmd_args)
-                    .output(),
-            )
-            .await;
+        match result {
+            Ok(Ok(output)) => {
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    if stderr.contains("NO_SCREENSHOT_TOOL") {
+                        return Ok(ToolResult {
+                            success: false,
+                            output: String::new(),
+                            error: Some(
+                                "No screenshot tool found. Install gnome-screenshot, scrot, or ImageMagick."
+                                    .into(),
+                            ),
+                            error_kind: None,
+});
+                    }
+                    return Ok(ToolResult {
+                        success: false,
+                        output: String::new(),
+                        error: Some(format!("Screenshot command failed: {stderr}")),
+                        error_kind: None,
+                    });
+                }
 
-            match result {
-                Ok(Ok(output)) => {
-                    saw_spawnable_command = true;
-                    if output.status.success() {
-                        return Self::read_and_encode(&output_path).await;
-                    }
-                    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                    if stderr.is_empty() {
-                        last_failure =
-                            Some(format!("{} exited with status {}", program, output.status));
-                    } else {
-                        last_failure = Some(stderr);
-                    }
-                }
-                Ok(Err(e)) if e.kind() == ErrorKind::NotFound => {
-                    // Try next candidate command.
-                }
-                Ok(Err(e)) => {
-                    saw_spawnable_command = true;
-                    last_failure = Some(format!("Failed to execute screenshot command: {e}"));
-                }
-                Err(_) => {
-                    saw_spawnable_command = true;
-                    last_failure = Some(format!(
-                        "Screenshot timed out after {SCREENSHOT_TIMEOUT_SECS}s"
-                    ));
-                }
+                Self::read_and_encode(&output_path).await
             }
+            Ok(Err(e)) => Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!("Failed to execute screenshot command: {e}")),
+                error_kind: None,
+            }),
+            Err(_) => Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!(
+                    "Screenshot timed out after {SCREENSHOT_TIMEOUT_SECS}s"
+                )),
+                error_kind: None,
+            }),
         }
 
         if !saw_spawnable_command {
@@ -248,6 +248,7 @@ impl ScreenshotTool {
                         meta.len(),
                     ),
                     error: None,
+                    error_kind: None,
                 });
             }
         }
@@ -288,12 +289,14 @@ impl ScreenshotTool {
                     success: true,
                     output: output_msg,
                     error: None,
+                    error_kind: None,
                 })
             }
             Err(e) => Ok(ToolResult {
                 success: false,
                 output: format!("Screenshot saved to: {}", output_path.display()),
                 error: Some(format!("Failed to read screenshot file: {e}")),
+                error_kind: None,
             }),
         }
     }
@@ -331,6 +334,7 @@ impl Tool for ScreenshotTool {
                 success: false,
                 output: String::new(),
                 error: Some("Action blocked: autonomy is read-only".into()),
+                error_kind: None,
             });
         }
         self.capture(args).await

@@ -197,11 +197,23 @@ impl Tool for ImageInfoTool {
             return Ok(ToolResult {
                 success: false,
                 output: String::new(),
-                error: Some(format!("Not a file: {}", resolved_path.display())),
+                error: Some(format!(
+                    "Path not allowed: {path_str} (must be within workspace)"
+                )),
+                error_kind: None,
             });
         }
 
-        let metadata = tokio::fs::metadata(&resolved_path)
+        if !path.exists() {
+            return Ok(ToolResult {
+                success: false,
+                output: String::new(),
+                error: Some(format!("File not found: {path_str}")),
+                error_kind: None,
+            });
+        }
+
+        let metadata = tokio::fs::metadata(path)
             .await
             .map_err(|e| anyhow::anyhow!("Failed to read file metadata: {e}"))?;
 
@@ -214,6 +226,7 @@ impl Tool for ImageInfoTool {
                 error: Some(format!(
                     "Image too large: {file_size} bytes (max {MAX_IMAGE_BYTES} bytes)"
                 )),
+                error_kind: None,
             });
         }
 
@@ -248,6 +261,7 @@ impl Tool for ImageInfoTool {
             success: true,
             output,
             error: None,
+            error_kind: None,
         })
     }
 }

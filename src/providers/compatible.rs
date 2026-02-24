@@ -1823,7 +1823,7 @@ mod tests {
             make_provider("Moonshot", "https://api.moonshot.cn", None),
             make_provider("GLM", "https://open.bigmodel.cn", None),
             make_provider("MiniMax", "https://api.minimaxi.com/v1", None),
-            make_provider("Groq", "https://api.groq.com/openai", None),
+            make_provider("Groq", "https://api.groq.com/openai/v1", None),
             make_provider("Mistral", "https://api.mistral.ai", None),
             make_provider("xAI", "https://api.x.ai", None),
             make_provider("Astrai", "https://as-trai.com/v1", None),
@@ -1963,6 +1963,16 @@ mod tests {
         assert_eq!(
             p.chat_completions_url(),
             "https://api.openai.com/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn chat_completions_url_groq_openai_v1() {
+        // Groq's OpenAI-compatible API requires the /openai/v1 prefix.
+        let p = make_provider("groq", "https://api.groq.com/openai/v1", None);
+        assert_eq!(
+            p.chat_completions_url(),
+            "https://api.groq.com/openai/v1/chat/completions"
         );
     }
 

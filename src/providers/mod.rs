@@ -675,6 +675,7 @@ pub struct ProviderRuntimeOptions {
     pub zeroclaw_dir: Option<PathBuf>,
     pub secrets_encrypt: bool,
     pub reasoning_enabled: Option<bool>,
+    pub reasoning_level: std::collections::HashMap<String, String>,
 }
 
 impl Default for ProviderRuntimeOptions {
@@ -684,6 +685,7 @@ impl Default for ProviderRuntimeOptions {
             zeroclaw_dir: None,
             secrets_encrypt: true,
             reasoning_enabled: None,
+            reasoning_level: std::collections::HashMap::new(),
         }
     }
 }
@@ -933,7 +935,7 @@ pub fn create_provider_with_url(
 
 /// Factory: create provider with optional base URL and runtime options.
 #[allow(clippy::too_many_lines)]
-fn create_provider_with_url_and_options(
+pub fn create_provider_with_url_and_options(
     name: &str,
     api_key: Option<&str>,
     api_url: Option<&str>,

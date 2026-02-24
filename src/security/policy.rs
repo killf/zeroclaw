@@ -820,15 +820,57 @@ impl SecurityPolicy {
                 !args.iter().any(|arg| arg == "-exec" || arg == "-ok")
             }
             "git" => {
-                // git config, alias, and -c can be used to set dangerous options
-                // (e.g. git config core.editor "rm -rf /")
-                !args.iter().any(|arg| {
-                    arg == "config"
-                        || arg.starts_with("config.")
-                        || arg == "alias"
-                        || arg.starts_with("alias.")
-                        || arg == "-c"
-                })
+                // git alias and -c can be used to set dangerous options
+                // git config is allowed for read-only operations (--get, --list, -l)
+                // but blocked for write operations or dangerous keys
+                if args.iter().any(|arg| arg == "alias" || arg.starts_with("alias.") || arg == "-c") {
+                    return false;
+                }
+
+                // Check for git config
+                let config_idx = args.iter().position(|arg| arg == "config" || arg.starts_with("config."));
+                if let Some(idx) = config_idx {
+                    // Check if this is a read-only operation
+                    let is_read_only = args.iter().any(|arg| {
+                        arg == "--get" || arg == "--get-all" || arg == "--list" || arg == "-l"
+                    });
+
+                    if is_read_only {
+                        // Read-only operations are safe
+                        return true;
+                    }
+
+                    // For write operations, check if the key is safe
+                    // Safe keys: user.*, commit.*
+                    // Dangerous keys: core.*, credential.*, alias.*, *.editor, *.pager
+                    let key_args: Vec<&String> = args[idx + 1..]
+                        .iter()
+                        .filter(|arg| !arg.starts_with('-'))
+                        .collect();
+
+                    if let Some(key) = key_args.first() {
+                        let key_lower = key.to_lowercase();
+                        // Block dangerous config keys
+                        let is_dangerous = key_lower.starts_with("core.")
+                            || key_lower.starts_with("credential.")
+                            || key_lower.starts_with("alias.")
+                            || key_lower.ends_with(".editor")
+                            || key_lower.ends_with(".pager")
+                            || key_lower.contains("editor")
+                            || key_lower.contains("pager")
+                            || key_lower == "core"
+                            || key_lower == "credential";
+
+                        if is_dangerous {
+                            return false;
+                        }
+                    }
+
+                    // Allow safe config writes (e.g., user.name, user.email, commit.*)
+                    return true;
+                }
+
+                true
             }
             _ => true,
         }
@@ -1711,10 +1753,22 @@ mod tests {
         // find -exec is a common bypass
         assert!(!p.is_command_allowed("find . -exec rm -rf {} +"));
         assert!(!p.is_command_allowed("find / -ok cat {} \\;"));
-        // git config/alias can execute commands
+        // git config with dangerous keys should be blocked
         assert!(!p.is_command_allowed("git config core.editor \"rm -rf /\""));
+        assert!(!p.is_command_allowed("git config core.pager \"cat /etc/passwd\""));
+        assert!(!p.is_command_allowed("git config credential.helper \"malicious\""));
+        // git alias and -c can execute commands
         assert!(!p.is_command_allowed("git alias.st status"));
         assert!(!p.is_command_allowed("git -c core.editor=calc.exe commit"));
+        // Read-only git config operations should be allowed
+        assert!(p.is_command_allowed("git config --get user.name"));
+        assert!(p.is_command_allowed("git config --get user.email"));
+        assert!(p.is_command_allowed("git config --list"));
+        assert!(p.is_command_allowed("git config -l"));
+        // Safe config writes should be allowed
+        assert!(p.is_command_allowed("git config user.name \"Test User\""));
+        assert!(p.is_command_allowed("git config user.email \"test@example.com\""));
+        assert!(p.is_command_allowed("git config commit.gpgsign true"));
         // Legitimate commands should still work
         assert!(p.is_command_allowed("find . -name '*.txt'"));
         assert!(p.is_command_allowed("git status"));

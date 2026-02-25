@@ -1,7 +1,6 @@
 use crate::config::schema::{
     default_nostr_relays, DingTalkConfig, IrcConfig, LarkReceiveMode, LinqConfig,
-    NextcloudTalkConfig, NostrConfig, QQConfig, QQReceiveMode, SignalConfig, StreamMode,
-    WhatsAppConfig,
+    NextcloudTalkConfig, NostrConfig, QQConfig, SignalConfig, StreamMode, WhatsAppConfig,
 };
 use crate::config::{
     AutonomyConfig, BrowserConfig, ChannelsConfig, ComposioConfig, Config, DiscordConfig,
@@ -22,7 +21,7 @@ use console::style;
 use dialoguer::{Confirm, Input, Select};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -134,13 +133,10 @@ pub async fn run_wizard(force: bool) -> Result<Config> {
         },
         api_url: provider_api_url,
         default_provider: Some(provider),
-        provider_api: None,
         default_model: Some(model),
-        model_providers: std::collections::HashMap::new(),
         default_temperature: 0.7,
         observability: ObservabilityConfig::default(),
         autonomy: AutonomyConfig::default(),
-        security: crate::config::SecurityConfig::default(),
         runtime: RuntimeConfig::default(),
         research: crate::config::ResearchPhaseConfig::default(),
         reliability: crate::config::ReliabilityConfig::default(),
@@ -161,7 +157,6 @@ pub async fn run_wizard(force: bool) -> Result<Config> {
         browser: BrowserConfig::default(),
         http_request: crate::config::HttpRequestConfig::default(),
         multimodal: crate::config::MultimodalConfig::default(),
-        web_fetch: crate::config::WebFetchConfig::default(),
         web_search: crate::config::WebSearchConfig::default(),
         proxy: crate::config::ProxyConfig::default(),
         identity: crate::config::IdentityConfig::default(),
@@ -172,8 +167,6 @@ pub async fn run_wizard(force: bool) -> Result<Config> {
         hardware: hardware_config,
         query_classification: crate::config::QueryClassificationConfig::default(),
         transcription: crate::config::TranscriptionConfig::default(),
-        agents_ipc: crate::config::AgentsIpcConfig::default(),
-        model_support_vision: None,
     };
 
     println!(
@@ -393,7 +386,6 @@ fn memory_config_defaults_for_backend(backend: &str) -> MemoryConfig {
         snapshot_on_hygiene: false,
         auto_hydrate: true,
         sqlite_open_timeout_secs: None,
-        qdrant: crate::config::QdrantConfig::default(),
     }
 }
 
@@ -489,13 +481,10 @@ async fn run_quick_setup_with_home(
         }),
         api_url: None,
         default_provider: Some(provider_name.clone()),
-        provider_api: None,
         default_model: Some(model.clone()),
-        model_providers: std::collections::HashMap::new(),
         default_temperature: 0.7,
         observability: ObservabilityConfig::default(),
         autonomy: AutonomyConfig::default(),
-        security: crate::config::SecurityConfig::default(),
         runtime: RuntimeConfig::default(),
         research: crate::config::ResearchPhaseConfig::default(),
         reliability: crate::config::ReliabilityConfig::default(),
@@ -516,7 +505,6 @@ async fn run_quick_setup_with_home(
         browser: BrowserConfig::default(),
         http_request: crate::config::HttpRequestConfig::default(),
         multimodal: crate::config::MultimodalConfig::default(),
-        web_fetch: crate::config::WebFetchConfig::default(),
         web_search: crate::config::WebSearchConfig::default(),
         proxy: crate::config::ProxyConfig::default(),
         identity: crate::config::IdentityConfig::default(),
@@ -527,8 +515,6 @@ async fn run_quick_setup_with_home(
         hardware: crate::config::HardwareConfig::default(),
         query_classification: crate::config::QueryClassificationConfig::default(),
         transcription: crate::config::TranscriptionConfig::default(),
-        agents_ipc: crate::config::AgentsIpcConfig::default(),
-        model_support_vision: None,
     };
 
     config.save().await?;
@@ -613,32 +599,10 @@ async fn run_quick_setup_with_home(
     println!();
     println!("  {}", style("Next steps:").white().bold());
     if credential_override.is_none() {
-        if provider_supports_keyless_local_usage(&provider_name) {
-            println!("    1. Chat:     zeroclaw agent -m \"Hello!\"");
-            println!("    2. Gateway:  zeroclaw gateway");
-            println!("    3. Status:   zeroclaw status");
-        } else if provider_supports_device_flow(&provider_name) {
-            if canonical_provider_name(&provider_name) == "copilot" {
-                println!("    1. Chat:              zeroclaw agent -m \"Hello!\"");
-                println!("       (device / OAuth auth will prompt on first run)");
-                println!("    2. Gateway:           zeroclaw gateway");
-                println!("    3. Status:            zeroclaw status");
-            } else {
-                println!(
-                    "    1. Login:             zeroclaw auth login --provider {}",
-                    provider_name
-                );
-                println!("    2. Chat:              zeroclaw agent -m \"Hello!\"");
-                println!("    3. Gateway:           zeroclaw gateway");
-                println!("    4. Status:            zeroclaw status");
-            }
-        } else {
-            let env_var = provider_env_var(&provider_name);
-            println!("    1. Set your API key:  export {env_var}=\"sk-...\"");
-            println!("    2. Or edit:           ~/.zeroclaw/config.toml");
-            println!("    3. Chat:              zeroclaw agent -m \"Hello!\"");
-            println!("    4. Gateway:           zeroclaw gateway");
-        }
+        println!("    1. Set your API key:  export OPENROUTER_API_KEY=\"sk-...\"");
+        println!("    2. Or edit:           ~/.zeroclaw/config.toml");
+        println!("    3. Chat:              zeroclaw agent -m \"Hello!\"");
+        println!("    4. Gateway:           zeroclaw gateway");
     } else {
         println!("    1. Chat:     zeroclaw agent -m \"Hello!\"");
         println!("    2. Gateway:  zeroclaw gateway");
@@ -662,8 +626,6 @@ fn canonical_provider_name(provider_name: &str) -> &str {
         "grok" => "xai",
         "together" => "together-ai",
         "google" | "google-gemini" => "gemini",
-        "github-copilot" => "copilot",
-        "openai_codex" | "codex" => "openai-codex",
         "kimi_coding" | "kimi_for_coding" => "kimi-code",
         "nvidia-nim" | "build.nvidia.com" => "nvidia",
         "aws-bedrock" => "bedrock",
@@ -708,11 +670,9 @@ fn default_model_for_provider(provider: &str) -> String {
         "xai" => "grok-4-1-fast-reasoning".into(),
         "perplexity" => "sonar-pro".into(),
         "fireworks" => "accounts/fireworks/models/llama-v3p3-70b-instruct".into(),
-        "novita" => "minimax/minimax-m2.5".into(),
         "together-ai" => "meta-llama/Llama-3.3-70B-Instruct-Turbo".into(),
         "cohere" => "command-a-03-2025".into(),
         "moonshot" => "kimi-k2.5".into(),
-        "hunyuan" => "hunyuan-t1-latest".into(),
         "glm" | "zai" => "glm-5".into(),
         "minimax" => "MiniMax-M2.5".into(),
         "qwen" => "qwen-plus".into(),
@@ -863,20 +823,6 @@ fn curated_models_for_provider(provider_name: &str) -> Vec<(String, String)> {
                 "DeepSeek Reasoner (mapped to V3.2 thinking)".to_string(),
             ),
         ],
-        "hunyuan" => vec![
-            (
-                "hunyuan-t1-latest".to_string(),
-                "Hunyuan T1 (deep reasoning, latest)".to_string(),
-            ),
-            (
-                "hunyuan-turbo-latest".to_string(),
-                "Hunyuan Turbo (fast, general purpose)".to_string(),
-            ),
-            (
-                "hunyuan-pro".to_string(),
-                "Hunyuan Pro (high quality)".to_string(),
-            ),
-        ],
         "xai" => vec![
             (
                 "grok-4-1-fast-reasoning".to_string(),
@@ -917,10 +863,6 @@ fn curated_models_for_provider(provider_name: &str) -> Vec<(String, String)> {
                 "Mixtral 8x22B".to_string(),
             ),
         ],
-        "novita" => vec![(
-            "minimax/minimax-m2.5".to_string(),
-            "MiniMax M2.5".to_string(),
-        )],
         "together-ai" => vec![
             (
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo".to_string(),
@@ -1154,14 +1096,9 @@ fn curated_models_for_provider(provider_name: &str) -> Vec<(String, String)> {
 }
 
 fn supports_live_model_fetch(provider_name: &str) -> bool {
-    if provider_name.trim().starts_with("custom:") {
-        return true;
-    }
-
     matches!(
         canonical_provider_name(provider_name),
         "openrouter"
-            | "openai-codex"
             | "openai"
             | "anthropic"
             | "groq"
@@ -1178,7 +1115,6 @@ fn supports_live_model_fetch(provider_name: &str) -> bool {
             | "astrai"
             | "venice"
             | "fireworks"
-            | "novita"
             | "cohere"
             | "moonshot"
             | "glm"
@@ -1196,7 +1132,7 @@ fn models_endpoint_for_provider(provider_name: &str) -> Option<&'static str> {
         "glm-cn" | "bigmodel" => Some("https://open.bigmodel.cn/api/paas/v4/models"),
         "zai-cn" | "z.ai-cn" => Some("https://open.bigmodel.cn/api/coding/paas/v4/models"),
         _ => match canonical_provider_name(provider_name) {
-            "openai-codex" | "openai" => Some("https://api.openai.com/v1/models"),
+            "openai" => Some("https://api.openai.com/v1/models"),
             "venice" => Some("https://api.venice.ai/api/v1/models"),
             "groq" => Some("https://api.groq.com/openai/v1/models"),
             "mistral" => Some("https://api.mistral.ai/v1/models"),
@@ -1204,7 +1140,6 @@ fn models_endpoint_for_provider(provider_name: &str) -> Option<&'static str> {
             "xai" => Some("https://api.x.ai/v1/models"),
             "together-ai" => Some("https://api.together.xyz/v1/models"),
             "fireworks" => Some("https://api.fireworks.ai/inference/v1/models"),
-            "novita" => Some("https://api.novita.ai/openai/v1/models"),
             "cohere" => Some("https://api.cohere.com/compatibility/v1/models"),
             "moonshot" => Some("https://api.moonshot.ai/v1/models"),
             "glm" => Some("https://api.z.ai/api/paas/v4/models"),
@@ -1230,16 +1165,14 @@ fn build_model_fetch_client() -> Result<reqwest::blocking::Client> {
 }
 
 fn normalize_model_ids(ids: Vec<String>) -> Vec<String> {
-    let mut unique = BTreeMap::new();
+    let mut unique = BTreeSet::new();
     for id in ids {
         let trimmed = id.trim();
         if !trimmed.is_empty() {
-            unique
-                .entry(trimmed.to_ascii_lowercase())
-                .or_insert_with(|| trimmed.to_string());
+            unique.insert(trimmed.to_string());
         }
     }
-    unique.into_values().collect()
+    unique.into_iter().collect()
 }
 
 fn parse_openai_compatible_model_ids(payload: &Value) -> Vec<String> {
@@ -1448,34 +1381,10 @@ fn resolve_live_models_endpoint(
     provider_name: &str,
     provider_api_url: Option<&str>,
 ) -> Option<String> {
-    if let Some(raw_base) = provider_name.strip_prefix("custom:") {
-        let normalized = raw_base.trim().trim_end_matches('/');
-        if normalized.is_empty() {
-            return None;
-        }
-        if normalized.ends_with("/models") {
-            return Some(normalized.to_string());
-        }
-        return Some(format!("{normalized}/models"));
-    }
-
     if matches!(
         canonical_provider_name(provider_name),
         "llamacpp" | "sglang" | "vllm" | "osaurus"
     ) {
-        if let Some(url) = provider_api_url
-            .map(str::trim)
-            .filter(|url| !url.is_empty())
-        {
-            let normalized = url.trim_end_matches('/');
-            if normalized.ends_with("/models") {
-                return Some(normalized.to_string());
-            }
-            return Some(format!("{normalized}/models"));
-        }
-    }
-
-    if canonical_provider_name(provider_name) == "openai-codex" {
         if let Some(url) = provider_api_url
             .map(str::trim)
             .filter(|url| !url.is_empty())
@@ -1832,151 +1741,6 @@ pub async fn run_models_refresh(
     }
 }
 
-pub async fn run_models_list(config: &Config, provider_override: Option<&str>) -> Result<()> {
-    let provider_name = provider_override
-        .or(config.default_provider.as_deref())
-        .unwrap_or("openrouter");
-
-    let cached = load_any_cached_models_for_provider(&config.workspace_dir, provider_name).await?;
-
-    let Some(cached) = cached else {
-        println!();
-        println!(
-            "  No cached models for '{provider_name}'. Run: zeroclaw models refresh --provider {provider_name}"
-        );
-        println!();
-        return Ok(());
-    };
-
-    println!();
-    println!(
-        "  {} models for '{}' (cached {} ago):",
-        cached.models.len(),
-        provider_name,
-        humanize_age(cached.age_secs)
-    );
-    println!();
-    for model in &cached.models {
-        let marker = if config.default_model.as_deref() == Some(model.as_str()) {
-            "* "
-        } else {
-            "  "
-        };
-        println!("  {marker}{model}");
-    }
-    println!();
-    Ok(())
-}
-
-pub async fn run_models_set(config: &Config, model: &str) -> Result<()> {
-    let model = model.trim();
-    if model.is_empty() {
-        anyhow::bail!("Model name cannot be empty");
-    }
-
-    let mut updated = config.clone();
-    updated.default_model = Some(model.to_string());
-    updated.save().await?;
-
-    println!();
-    println!("  Default model set to '{}'.", style(model).green().bold());
-    println!();
-    Ok(())
-}
-
-pub async fn run_models_status(config: &Config) -> Result<()> {
-    let provider = config.default_provider.as_deref().unwrap_or("openrouter");
-    let model = config.default_model.as_deref().unwrap_or("(not set)");
-
-    println!();
-    println!("  Provider:  {}", style(provider).cyan());
-    println!("  Model:     {}", style(model).cyan());
-    println!(
-        "  Temp:      {}",
-        style(format!("{:.1}", config.default_temperature)).cyan()
-    );
-
-    match load_any_cached_models_for_provider(&config.workspace_dir, provider).await? {
-        Some(cached) => {
-            println!(
-                "  Cache:     {} models (updated {} ago)",
-                cached.models.len(),
-                humanize_age(cached.age_secs)
-            );
-            let fresh = cached.age_secs < MODEL_CACHE_TTL_SECS;
-            if fresh {
-                println!("  Freshness: {}", style("fresh").green());
-            } else {
-                println!("  Freshness: {}", style("stale").yellow());
-            }
-        }
-        None => {
-            println!("  Cache:     {}", style("none").yellow());
-        }
-    }
-
-    println!();
-    Ok(())
-}
-
-pub async fn cached_model_catalog_stats(
-    config: &Config,
-    provider_name: &str,
-) -> Result<Option<(usize, u64)>> {
-    let Some(cached) =
-        load_any_cached_models_for_provider(&config.workspace_dir, provider_name).await?
-    else {
-        return Ok(None);
-    };
-    Ok(Some((cached.models.len(), cached.age_secs)))
-}
-
-pub async fn run_models_refresh_all(config: &Config, force: bool) -> Result<()> {
-    let mut targets: Vec<String> = crate::providers::list_providers()
-        .into_iter()
-        .map(|provider| provider.name.to_string())
-        .filter(|name| supports_live_model_fetch(name))
-        .collect();
-
-    targets.sort();
-    targets.dedup();
-
-    if targets.is_empty() {
-        anyhow::bail!("No providers support live model discovery");
-    }
-
-    println!(
-        "Refreshing model catalogs for {} providers (force: {})",
-        targets.len(),
-        if force { "yes" } else { "no" }
-    );
-    println!();
-
-    let mut ok_count = 0usize;
-    let mut fail_count = 0usize;
-
-    for provider_name in &targets {
-        println!("== {} ==", provider_name);
-        match run_models_refresh(config, Some(provider_name), force).await {
-            Ok(()) => {
-                ok_count += 1;
-            }
-            Err(error) => {
-                fail_count += 1;
-                println!("  failed: {error}");
-            }
-        }
-        println!();
-    }
-
-    println!("Summary: {} succeeded, {} failed", ok_count, fail_count);
-
-    if ok_count == 0 {
-        anyhow::bail!("Model refresh failed for all providers")
-    }
-    Ok(())
-}
-
 // ── Step helpers ─────────────────────────────────────────────────
 
 fn print_step(current: u8, total: u8, title: &str) {
@@ -2175,7 +1939,6 @@ async fn setup_provider(workspace_dir: &Path) -> Result<(String, String, String,
         1 => vec![
             ("groq", "Groq — ultra-fast LPU inference"),
             ("fireworks", "Fireworks AI — fast open-source inference"),
-            ("novita", "Novita AI — affordable open-source inference"),
             ("together-ai", "Together AI — open-source model hosting"),
             ("nvidia", "NVIDIA NIM — DeepSeek, Llama, & more"),
         ],
@@ -2212,7 +1975,6 @@ async fn setup_provider(workspace_dir: &Path) -> Result<(String, String, String,
             ("qwen", "Qwen — DashScope China endpoint"),
             ("qwen-intl", "Qwen — DashScope international endpoint"),
             ("qwen-us", "Qwen — DashScope US endpoint"),
-            ("hunyuan", "Hunyuan — Tencent large models (T1, Turbo, Pro)"),
             ("qianfan", "Qianfan — Baidu AI models (China endpoint)"),
             ("zai", "Z.AI — global coding endpoint"),
             ("zai-cn", "Z.AI — China coding endpoint (open.bigmodel.cn)"),
@@ -2600,7 +2362,6 @@ async fn setup_provider(workspace_dir: &Path) -> Result<(String, String, String,
                 "deepseek" => "https://platform.deepseek.com/api_keys",
                 "together-ai" => "https://api.together.xyz/settings/api-keys",
                 "fireworks" => "https://fireworks.ai/account/api-keys",
-                "novita" => "https://novita.ai/settings/key-management",
                 "perplexity" => "https://www.perplexity.ai/settings/api",
                 "xai" => "https://console.x.ai",
                 "cohere" => "https://dashboard.cohere.com/api-keys",
@@ -2877,7 +2638,7 @@ fn provider_env_var(name: &str) -> &'static str {
     match canonical_provider_name(name) {
         "openrouter" => "OPENROUTER_API_KEY",
         "anthropic" => "ANTHROPIC_API_KEY",
-        "openai-codex" | "openai" => "OPENAI_API_KEY",
+        "openai" => "OPENAI_API_KEY",
         "ollama" => "OLLAMA_API_KEY",
         "llamacpp" => "LLAMACPP_API_KEY",
         "sglang" => "SGLANG_API_KEY",
@@ -2890,7 +2651,6 @@ fn provider_env_var(name: &str) -> &'static str {
         "xai" => "XAI_API_KEY",
         "together-ai" => "TOGETHER_API_KEY",
         "fireworks" | "fireworks-ai" => "FIREWORKS_API_KEY",
-        "novita" => "NOVITA_API_KEY",
         "perplexity" => "PERPLEXITY_API_KEY",
         "cohere" => "COHERE_API_KEY",
         "kimi-code" => "KIMI_CODE_API_KEY",
@@ -2898,7 +2658,6 @@ fn provider_env_var(name: &str) -> &'static str {
         "glm" => "GLM_API_KEY",
         "minimax" => "MINIMAX_API_KEY",
         "qwen" => "DASHSCOPE_API_KEY",
-        "hunyuan" => "HUNYUAN_API_KEY",
         "qianfan" => "QIANFAN_API_KEY",
         "zai" => "ZAI_API_KEY",
         "synthetic" => "SYNTHETIC_API_KEY",
@@ -2917,13 +2676,6 @@ fn provider_supports_keyless_local_usage(provider_name: &str) -> bool {
     matches!(
         canonical_provider_name(provider_name),
         "ollama" | "llamacpp" | "sglang" | "vllm" | "osaurus"
-    )
-}
-
-fn provider_supports_device_flow(provider_name: &str) -> bool {
-    matches!(
-        canonical_provider_name(provider_name),
-        "copilot" | "gemini" | "openai-codex"
     )
 }
 
@@ -4014,7 +3766,6 @@ fn setup_channels() -> Result<ChannelsConfig> {
                     device_id: detected_device_id,
                     room_id,
                     allowed_users,
-                    mention_only: false,
                 });
             }
             ChannelMenuChoice::Signal => {
@@ -4763,22 +4514,10 @@ fn setup_channels() -> Result<ChannelsConfig> {
                     .filter(|s| !s.is_empty())
                     .collect();
 
-                let receive_mode_choice = Select::new()
-                    .with_prompt("  Receive mode")
-                    .items(["Webhook (recommended)", "WebSocket (legacy fallback)"])
-                    .default(0)
-                    .interact()?;
-                let receive_mode = if receive_mode_choice == 0 {
-                    QQReceiveMode::Webhook
-                } else {
-                    QQReceiveMode::Websocket
-                };
-
                 config.qq = Some(QQConfig {
                     app_id,
                     app_secret,
                     allowed_users,
-                    receive_mode,
                 });
             }
             ChannelMenuChoice::LarkFeishu => {
@@ -4963,7 +4702,6 @@ fn setup_channels() -> Result<ChannelsConfig> {
                     verification_token,
                     encrypt_key: None,
                     allowed_users,
-                    mention_only: false,
                     use_feishu,
                     receive_mode,
                     port,
@@ -5754,9 +5492,8 @@ fn print_summary(config: &Config) {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::sync::OnceLock;
+    use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
-    use tokio::sync::Mutex;
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -5790,29 +5527,6 @@ mod tests {
                 std::env::remove_var(self.key);
             }
         }
-    }
-
-    async fn run_quick_setup_with_clean_env(
-        credential_override: Option<&str>,
-        provider: Option<&str>,
-        model_override: Option<&str>,
-        memory_backend: Option<&str>,
-        force: bool,
-        home: &Path,
-    ) -> Result<Config> {
-        let _env_guard = env_lock().lock().await;
-        let _workspace_env = EnvVarGuard::unset("ZEROCLAW_WORKSPACE");
-        let _config_env = EnvVarGuard::unset("ZEROCLAW_CONFIG_DIR");
-
-        run_quick_setup_with_home(
-            credential_override,
-            provider,
-            model_override,
-            memory_backend,
-            force,
-            home,
-        )
-        .await
     }
 
     // ── ProjectContext defaults ──────────────────────────────────
@@ -5881,7 +5595,7 @@ mod tests {
     async fn quick_setup_model_override_persists_to_config_toml() {
         let tmp = TempDir::new().unwrap();
 
-        let config = run_quick_setup_with_clean_env(
+        let config = run_quick_setup_with_home(
             Some("sk-issue946"),
             Some("openrouter"),
             Some("custom-model-946"),
@@ -5905,7 +5619,7 @@ mod tests {
     async fn quick_setup_without_model_uses_provider_default_model() {
         let tmp = TempDir::new().unwrap();
 
-        let config = run_quick_setup_with_clean_env(
+        let config = run_quick_setup_with_home(
             Some("sk-issue946"),
             Some("anthropic"),
             None,
@@ -5932,7 +5646,7 @@ mod tests {
             .await
             .unwrap();
 
-        let err = run_quick_setup_with_clean_env(
+        let err = run_quick_setup_with_home(
             Some("sk-existing"),
             Some("openrouter"),
             Some("custom-model"),
@@ -5962,7 +5676,7 @@ mod tests {
         .await
         .unwrap();
 
-        let config = run_quick_setup_with_clean_env(
+        let config = run_quick_setup_with_home(
             Some("sk-force"),
             Some("openrouter"),
             Some("custom-model-fresh"),
@@ -5984,7 +5698,7 @@ mod tests {
 
     #[tokio::test]
     async fn quick_setup_respects_zero_claw_workspace_env_layout() {
-        let _env_guard = env_lock().lock().await;
+        let _env_guard = env_lock().lock().unwrap();
         let tmp = TempDir::new().unwrap();
         let workspace_root = tmp.path().join("zeroclaw-data");
         let workspace_dir = workspace_root.join("workspace");
@@ -6508,8 +6222,6 @@ mod tests {
         );
         assert_eq!(default_model_for_provider("venice"), "zai-org-glm-5");
         assert_eq!(default_model_for_provider("moonshot"), "kimi-k2.5");
-        assert_eq!(default_model_for_provider("hunyuan"), "hunyuan-t1-latest");
-        assert_eq!(default_model_for_provider("tencent"), "hunyuan-t1-latest");
         assert_eq!(
             default_model_for_provider("nvidia"),
             "meta/llama-3.3-70b-instruct"
@@ -6536,8 +6248,6 @@ mod tests {
         assert_eq!(canonical_provider_name("dashscope-us"), "qwen");
         assert_eq!(canonical_provider_name("qwen-code"), "qwen-code");
         assert_eq!(canonical_provider_name("qwen-oauth"), "qwen-code");
-        assert_eq!(canonical_provider_name("codex"), "openai-codex");
-        assert_eq!(canonical_provider_name("openai_codex"), "openai-codex");
         assert_eq!(canonical_provider_name("moonshot-intl"), "moonshot");
         assert_eq!(canonical_provider_name("kimi-cn"), "moonshot");
         assert_eq!(canonical_provider_name("kimi_coding"), "kimi-code");
@@ -6772,10 +6482,6 @@ mod tests {
     #[test]
     fn models_endpoint_for_provider_supports_additional_openai_compatible_providers() {
         assert_eq!(
-            models_endpoint_for_provider("openai-codex"),
-            Some("https://api.openai.com/v1/models")
-        );
-        assert_eq!(
             models_endpoint_for_provider("venice"),
             Some("https://api.venice.ai/api/v1/models")
         );
@@ -6845,18 +6551,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_live_models_endpoint_supports_custom_provider_urls() {
-        assert_eq!(
-            resolve_live_models_endpoint("custom:https://proxy.example.com/v1", None),
-            Some("https://proxy.example.com/v1/models".to_string())
-        );
-        assert_eq!(
-            resolve_live_models_endpoint("custom:https://proxy.example.com/v1/models", None),
-            Some("https://proxy.example.com/v1/models".to_string())
-        );
-    }
-
-    #[test]
     fn normalize_ollama_endpoint_url_strips_api_suffix_and_trailing_slash() {
         assert_eq!(
             normalize_ollama_endpoint_url(" https://ollama.com/api/ "),
@@ -6917,17 +6611,6 @@ mod tests {
 
         let ids = parse_openai_compatible_model_ids(&payload);
         assert_eq!(ids, vec!["alpha".to_string(), "beta".to_string()]);
-    }
-
-    #[test]
-    fn normalize_model_ids_deduplicates_case_insensitively() {
-        let ids = normalize_model_ids(vec![
-            "GPT-5".to_string(),
-            "gpt-5".to_string(),
-            "gpt-5-mini".to_string(),
-            " GPT-5-MINI ".to_string(),
-        ]);
-        assert_eq!(ids, vec!["GPT-5".to_string(), "gpt-5-mini".to_string()]);
     }
 
     #[test]
@@ -7056,7 +6739,6 @@ mod tests {
     fn provider_env_var_known_providers() {
         assert_eq!(provider_env_var("openrouter"), "OPENROUTER_API_KEY");
         assert_eq!(provider_env_var("anthropic"), "ANTHROPIC_API_KEY");
-        assert_eq!(provider_env_var("openai-codex"), "OPENAI_API_KEY");
         assert_eq!(provider_env_var("openai"), "OPENAI_API_KEY");
         assert_eq!(provider_env_var("ollama"), "OLLAMA_API_KEY");
         assert_eq!(provider_env_var("llamacpp"), "LLAMACPP_API_KEY");
@@ -7088,8 +6770,6 @@ mod tests {
         assert_eq!(provider_env_var("nvidia-nim"), "NVIDIA_API_KEY"); // alias
         assert_eq!(provider_env_var("build.nvidia.com"), "NVIDIA_API_KEY"); // alias
         assert_eq!(provider_env_var("astrai"), "ASTRAI_API_KEY");
-        assert_eq!(provider_env_var("hunyuan"), "HUNYUAN_API_KEY");
-        assert_eq!(provider_env_var("tencent"), "HUNYUAN_API_KEY"); // alias
     }
 
     #[test]
@@ -7100,16 +6780,6 @@ mod tests {
         assert!(provider_supports_keyless_local_usage("sglang"));
         assert!(provider_supports_keyless_local_usage("vllm"));
         assert!(!provider_supports_keyless_local_usage("openai"));
-    }
-
-    #[test]
-    fn provider_supports_device_flow_copilot() {
-        assert!(provider_supports_device_flow("copilot"));
-        assert!(provider_supports_device_flow("github-copilot"));
-        assert!(provider_supports_device_flow("gemini"));
-        assert!(provider_supports_device_flow("openai-codex"));
-        assert!(!provider_supports_device_flow("openai"));
-        assert!(!provider_supports_device_flow("openrouter"));
     }
 
     #[test]
@@ -7212,7 +6882,6 @@ mod tests {
             app_id: "app-id".into(),
             app_secret: "app-secret".into(),
             allowed_users: vec!["*".into()],
-            receive_mode: crate::config::schema::QQReceiveMode::Websocket,
         });
         assert!(has_launchable_channels(&channels));
 

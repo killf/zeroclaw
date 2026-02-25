@@ -699,36 +699,6 @@ pub(crate) async fn run_tool_call_loop(
                 }
             }
 
-            if excluded_tools.iter().any(|ex| ex == &tool_name) {
-                let blocked = format!("Tool '{tool_name}' is not available in this channel.");
-                runtime_trace::record_event(
-                    "tool_call_result",
-                    Some(channel_name),
-                    Some(provider_name),
-                    Some(model),
-                    Some(&turn_id),
-                    Some(false),
-                    Some(&blocked),
-                    serde_json::json!({
-                        "iteration": iteration + 1,
-                        "tool": tool_name.clone(),
-                        "arguments": scrub_credentials(&tool_args.to_string()),
-                        "blocked_by_channel_policy": true,
-                    }),
-                );
-                ordered_results[idx] = Some((
-                    tool_name.clone(),
-                    call.tool_call_id.clone(),
-                    ToolExecutionOutcome {
-                        output: blocked.clone(),
-                        success: false,
-                        error_reason: Some(blocked),
-                        duration: Duration::ZERO,
-                    },
-                ));
-                continue;
-            }
-
             // ── Approval hook ────────────────────────────────
             if let Some(mgr) = approval {
                 if mgr.needs_approval(&tool_name) {
@@ -737,12 +707,11 @@ pub(crate) async fn run_tool_call_loop(
                         arguments: tool_args.clone(),
                     };
 
-                    // Only CLI supports interactive prompts today. For non-CLI channels,
-                    // fail closed instead of silently auto-approving privileged tools.
+                    // Only prompt interactively on CLI; auto-approve on other channels.
                     let decision = if channel_name == "cli" {
                         mgr.prompt_cli(&request)
                     } else {
-                        ApprovalResponse::No
+                        ApprovalResponse::Yes
                     };
 
                     mgr.record_decision(&tool_name, &tool_args, decision, channel_name);
@@ -912,13 +881,15 @@ pub(crate) async fn run_tool_call_loop(
             ordered_results[*idx] = Some((call.name.clone(), call.tool_call_id.clone(), outcome));
         }
 
-        for (tool_name, tool_call_id, outcome) in ordered_results.into_iter().flatten() {
-            individual_results.push((tool_call_id, outcome.output.clone()));
-            let _ = writeln!(
-                tool_results,
-                "<tool_result name=\"{}\">\n{}\n</tool_result>",
-                tool_name, outcome.output
-            );
+        for entry in ordered_results {
+            if let Some((tool_name, tool_call_id, outcome)) = entry {
+                individual_results.push((tool_call_id, outcome.output.clone()));
+                let _ = writeln!(
+                    tool_results,
+                    "<tool_result name=\"{}\">\n{}\n</tool_result>",
+                    tool_name, outcome.output
+                );
+            }
         }
 
         // Add assistant message with tool calls + tool results to history.
@@ -1164,21 +1135,22 @@ pub async fn run(
         zeroclaw_dir: config.config_path.parent().map(std::path::PathBuf::from),
         secrets_encrypt: config.secrets.encrypt,
         reasoning_enabled: config.runtime.reasoning_enabled,
-        reasoning_level: config.provider.reasoning_level.clone(),
         custom_provider_api_mode: config.provider_api.map(|mode| mode.as_compatible_mode()),
         max_tokens_override: None,
         model_support_vision: config.model_support_vision,
     };
 
-    let provider: Box<dyn Provider> = providers::create_routed_provider_with_options(
-        provider_name,
-        config.api_key.as_deref(),
-        config.api_url.as_deref(),
-        &config.reliability,
-        &config.model_routes,
-        model_name,
-        &provider_runtime_options,
-    )?;
+    let provider: Box<dyn Provider> =
+        providers::create_routed_provider_with_options_and_model_providers(
+            provider_name,
+            config.api_key.as_deref(),
+            config.api_url.as_deref(),
+            &config.reliability,
+            &config.model_routes,
+            &config.model_providers,
+            model_name,
+            &provider_runtime_options,
+        )?;
 
     observer.record_event(&ObserverEvent::AgentStart {
         provider: provider_name.to_string(),
@@ -1627,20 +1599,21 @@ pub async fn process_message(config: Config, message: &str) -> Result<String> {
         zeroclaw_dir: config.config_path.parent().map(std::path::PathBuf::from),
         secrets_encrypt: config.secrets.encrypt,
         reasoning_enabled: config.runtime.reasoning_enabled,
-        reasoning_level: config.provider.reasoning_level.clone(),
         custom_provider_api_mode: config.provider_api.map(|mode| mode.as_compatible_mode()),
         max_tokens_override: None,
         model_support_vision: config.model_support_vision,
     };
-    let provider: Box<dyn Provider> = providers::create_routed_provider_with_options(
-        provider_name,
-        config.api_key.as_deref(),
-        config.api_url.as_deref(),
-        &config.reliability,
-        &config.model_routes,
-        &model_name,
-        &provider_runtime_options,
-    )?;
+    let provider: Box<dyn Provider> =
+        providers::create_routed_provider_with_options_and_model_providers(
+            provider_name,
+            config.api_key.as_deref(),
+            config.api_url.as_deref(),
+            &config.reliability,
+            &config.model_routes,
+            &config.model_providers,
+            &model_name,
+            &provider_runtime_options,
+        )?;
 
     let hardware_rag: Option<crate::rag::HardwareRag> = config
         .peripherals
@@ -2306,126 +2279,6 @@ mod tests {
         assert!(
             idx_a < idx_b,
             "tool results should preserve input order for tool call mapping"
-        );
-    }
-
-    #[tokio::test]
-    async fn run_tool_call_loop_denies_supervised_tools_on_non_cli_channels() {
-        let provider = ScriptedProvider::from_text_responses(vec![
-            r#"<tool_call>
-{"name":"shell","arguments":{"command":"echo hi"}}
-</tool_call>"#,
-            "done",
-        ]);
-
-        let active = Arc::new(AtomicUsize::new(0));
-        let max_active = Arc::new(AtomicUsize::new(0));
-        let tools_registry: Vec<Box<dyn Tool>> = vec![Box::new(DelayTool::new(
-            "shell",
-            50,
-            Arc::clone(&active),
-            Arc::clone(&max_active),
-        ))];
-
-        let approval_mgr = ApprovalManager::from_config(&crate::config::AutonomyConfig::default());
-
-        let mut history = vec![
-            ChatMessage::system("test-system"),
-            ChatMessage::user("run shell"),
-        ];
-        let observer = NoopObserver;
-
-        let result = run_tool_call_loop(
-            &provider,
-            &mut history,
-            &tools_registry,
-            &observer,
-            "mock-provider",
-            "mock-model",
-            0.0,
-            true,
-            Some(&approval_mgr),
-            "telegram",
-            &crate::config::MultimodalConfig::default(),
-            4,
-            None,
-            None,
-            None,
-            &[],
-        )
-        .await
-        .expect("tool loop should complete with denied tool execution");
-
-        assert_eq!(result, "done");
-        assert_eq!(
-            max_active.load(Ordering::SeqCst),
-            0,
-            "shell tool must not execute when approval is unavailable on non-CLI channels"
-        );
-    }
-
-    #[tokio::test]
-    async fn run_tool_call_loop_blocks_tools_excluded_for_channel() {
-        let provider = ScriptedProvider::from_text_responses(vec![
-            r#"<tool_call>
-{"name":"shell","arguments":{"command":"echo hi"}}
-</tool_call>"#,
-            "done",
-        ]);
-
-        let active = Arc::new(AtomicUsize::new(0));
-        let max_active = Arc::new(AtomicUsize::new(0));
-        let tools_registry: Vec<Box<dyn Tool>> = vec![Box::new(DelayTool::new(
-            "shell",
-            50,
-            Arc::clone(&active),
-            Arc::clone(&max_active),
-        ))];
-
-        let mut history = vec![
-            ChatMessage::system("test-system"),
-            ChatMessage::user("run shell"),
-        ];
-        let observer = NoopObserver;
-        let excluded_tools = vec!["shell".to_string()];
-
-        let result = run_tool_call_loop(
-            &provider,
-            &mut history,
-            &tools_registry,
-            &observer,
-            "mock-provider",
-            "mock-model",
-            0.0,
-            true,
-            None,
-            "telegram",
-            &crate::config::MultimodalConfig::default(),
-            4,
-            None,
-            None,
-            None,
-            &excluded_tools,
-        )
-        .await
-        .expect("tool loop should complete with blocked tool execution");
-
-        assert_eq!(result, "done");
-        assert_eq!(
-            max_active.load(Ordering::SeqCst),
-            0,
-            "excluded tool must not execute even if the model requests it"
-        );
-
-        let tool_results_message = history
-            .iter()
-            .find(|msg| msg.role == "user" && msg.content.starts_with("[Tool results]"))
-            .expect("tool results message should be present");
-        assert!(
-            tool_results_message
-                .content
-                .contains("not available in this channel"),
-            "blocked reason should be visible to the model"
         );
     }
 

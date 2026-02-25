@@ -160,24 +160,20 @@ Behavior:
 - `true`: sends `think: true`.
 - Unset: omits `think` and keeps Ollama/model defaults.
 
-### Ollama Vision Override
+### OpenAI Codex Reasoning Level
 
-Some Ollama models support vision (e.g. `llava`, `llama3.2-vision`) while others do not.
-Since ZeroClaw cannot auto-detect this, you can override it in `config.toml`:
+You can control OpenAI Codex reasoning effort from `config.toml`:
 
 ```toml
-default_provider = "ollama"
-default_model = "llava"
-model_support_vision = true
+[provider]
+reasoning_level = "high"
 ```
 
 Behavior:
 
-- `true`: enables image attachment processing in the agent loop.
-- `false`: disables vision even if the provider reports support.
-- Unset: uses the provider's built-in default.
-
-Environment override: `ZEROCLAW_MODEL_SUPPORT_VISION=true`
+- Supported values: `minimal`, `low`, `medium`, `high`, `xhigh` (case-insensitive).
+- When set, overrides `ZEROCLAW_CODEX_REASONING_EFFORT`.
+- Unset falls back to `ZEROCLAW_CODEX_REASONING_EFFORT` if present, otherwise defaults to `xhigh`.
 
 ### Kimi Code Notes
 

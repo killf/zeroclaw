@@ -238,7 +238,8 @@ Examples:
   zeroclaw gateway                  # use config defaults
   zeroclaw gateway -p 8080          # listen on port 8080
   zeroclaw gateway --host 0.0.0.0   # bind to all interfaces
-  zeroclaw gateway -p 0             # random available port")]
+  zeroclaw gateway -p 0             # random available port
+  zeroclaw gateway --new-pairing    # clear tokens and generate fresh pairing code")]
     Gateway {
         /// Port to listen on (use 0 for random available port); defaults to config gateway.port
         #[arg(short, long)]
@@ -247,6 +248,10 @@ Examples:
         /// Host to bind to; defaults to config gateway.host
         #[arg(long)]
         host: Option<String>,
+
+        /// Clear all paired tokens and generate a fresh pairing code
+        #[arg(long)]
+        new_pairing: bool,
     },
 
     /// Start long-running autonomous runtime (gateway + channels + heartbeat + scheduler)
@@ -865,7 +870,16 @@ async fn main() -> Result<()> {
             .map(|_| ())
         }
 
-        Commands::Gateway { port, host } => {
+        Commands::Gateway {
+            port,
+            host,
+            new_pairing,
+        } => {
+            if new_pairing {
+                config.gateway.paired_tokens.clear();
+                config.save().await?;
+                info!("🔐 Cleared paired tokens — a fresh pairing code will be generated");
+            }
             let port = port.unwrap_or(config.gateway.port);
             let host = host.unwrap_or_else(|| config.gateway.host.clone());
             if port == 0 {

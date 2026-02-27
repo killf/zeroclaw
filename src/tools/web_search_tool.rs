@@ -21,6 +21,16 @@ pub struct WebSearchTool {
 }
 
 impl WebSearchTool {
+    /// Create a new WebSearchTool instance.
+    ///
+    /// # Arguments
+    /// * `security` - Security policy
+    /// * `provider` - Search provider (duckduckgo, brave, firecrawl, tavily)
+    /// * `api_key` - API key (supports comma-separated multiple keys for round-robin)
+    /// * `api_url` - Optional API URL override
+    /// * `max_results` - Maximum number of results to return (1-10)
+    /// * `timeout_secs` - Request timeout in seconds
+    /// * `user_agent` - HTTP user agent string
     pub fn new(
         security: Arc<SecurityPolicy>,
         provider: String,
@@ -63,6 +73,13 @@ impl WebSearchTool {
         Some(self.api_keys[idx].clone())
     }
 
+    /// Perform web search using DuckDuckGo HTML interface (free, no API key required).
+    ///
+    /// # Arguments
+    /// * `query` - The search query string
+    ///
+    /// # Returns
+    /// Formatted search results with title, URL, and snippet
     async fn search_duckduckgo(&self, query: &str) -> anyhow::Result<String> {
         let encoded_query = urlencoding::encode(query);
         let search_url = format!("https://html.duckduckgo.com/html/?q={}", encoded_query);
@@ -85,6 +102,14 @@ impl WebSearchTool {
         self.parse_duckduckgo_results(&html, query)
     }
 
+    /// Parse HTML response from DuckDuckGo search into formatted results.
+    ///
+    /// # Arguments
+    /// * `html` - The HTML response from DuckDuckGo
+    /// * `query` - The original search query (for context)
+    ///
+    /// # Returns
+    /// Formatted search results as a string
     fn parse_duckduckgo_results(&self, html: &str, query: &str) -> anyhow::Result<String> {
         // Extract result links: <a class="result__a" href="...">Title</a>
         let link_regex = Regex::new(
@@ -298,6 +323,13 @@ impl WebSearchTool {
         anyhow::bail!("web_search provider 'firecrawl' requires Cargo feature 'firecrawl'")
     }
 
+    /// Perform web search using Tavily Search API.
+    ///
+    /// # Arguments
+    /// * `query` - The search query string
+    ///
+    /// # Returns
+    /// Formatted search results with title, URL, and content snippets
     async fn search_tavily(&self, query: &str) -> anyhow::Result<String> {
         let api_key = self.get_next_api_key().ok_or_else(|| {
             anyhow::anyhow!(
@@ -388,6 +420,13 @@ impl WebSearchTool {
     }
 }
 
+/// Decode DuckDuckGo redirect URL to extract the actual destination URL.
+///
+/// # Arguments
+/// * `raw_url` - The redirect URL from DuckDuckGo
+///
+/// # Returns
+/// The decoded destination URL, or the original URL if decoding fails
 fn decode_ddg_redirect_url(raw_url: &str) -> String {
     if let Some(index) = raw_url.find("uddg=") {
         let encoded = &raw_url[index + 5..];
@@ -400,6 +439,13 @@ fn decode_ddg_redirect_url(raw_url: &str) -> String {
     raw_url.to_string()
 }
 
+/// Remove HTML tags from content, leaving only plain text.
+///
+/// # Arguments
+/// * `content` - The HTML content to strip
+///
+/// # Returns
+/// Plain text without HTML tags
 fn strip_tags(content: &str) -> String {
     let re = Regex::new(r"<[^>]+>").unwrap();
     re.replace_all(content, "").to_string()

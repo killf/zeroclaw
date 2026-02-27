@@ -30,6 +30,18 @@ pub struct WebFetchTool {
 }
 
 impl WebFetchTool {
+    /// Create a new WebFetchTool instance.
+    ///
+    /// # Arguments
+    /// * `security` - Security policy for URL validation
+    /// * `provider` - Provider name (fast_html2md, nanohtml2text, firecrawl, tavily)
+    /// * `api_key` - API key (supports comma-separated multiple keys for round-robin)
+    /// * `api_url` - Optional API URL override
+    /// * `allowed_domains` - List of allowed domains (empty = deny all)
+    /// * `blocked_domains` - List of blocked domains
+    /// * `max_response_size` - Maximum response size in bytes
+    /// * `timeout_secs` - Request timeout in seconds
+    /// * `user_agent` - HTTP user agent string
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         security: Arc<SecurityPolicy>,
@@ -83,6 +95,13 @@ impl WebFetchTool {
         Some(self.api_keys[idx].clone())
     }
 
+    /// Validate URL against security policy (allowed/blocked domains, schemes).
+    ///
+    /// # Arguments
+    /// * `raw_url` - The URL to validate
+    ///
+    /// # Returns
+    /// The validated URL string
     fn validate_url(&self, raw_url: &str) -> anyhow::Result<String> {
         validate_url(
             raw_url,
@@ -300,6 +319,13 @@ impl WebFetchTool {
         anyhow::bail!("web_fetch provider 'firecrawl' requires Cargo feature 'firecrawl'")
     }
 
+    /// Fetch web page content using Tavily Extract API.
+    ///
+    /// # Arguments
+    /// * `url` - The URL to fetch
+    ///
+    /// # Returns
+    /// The extracted content as markdown/text
     async fn fetch_with_tavily(&self, url: &str) -> anyhow::Result<String> {
         let api_key = self.get_next_api_key().ok_or_else(|| {
             anyhow::anyhow!(

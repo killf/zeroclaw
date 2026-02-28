@@ -189,7 +189,7 @@ pub trait AwwMemory: Memory {
 
 /// Agent can automatically use AWW
 impl Agent {
-    pub async fn solve_with_aww(&mut self, problem: &Problem) -> Solution {
+    pub async fn solve_with_aww(&mut self, problem: &Problem) -> Result<Solution> {
         // 1. First check Agent Wide Web
         let experiences = self.aww_client
             .search_experiences(ExperienceQuery::from_problem(problem))
@@ -201,7 +201,7 @@ impl Agent {
                 Ok(solution) => {
                     // Endorse the helpful experience
                     let _ = self.aww_client.endorse(&exp.aww_url, Endorsement::success()).await;
-                    return solution;
+                    return Ok(solution);
                 }
                 Err(e) => {
                     // Report if experience didn't work
@@ -215,7 +215,7 @@ impl Agent {
         let experience = Experience::from_problem_and_solution(problem, &solution);
 
         self.aww_client.publish_experience(experience).await?;
-        solution
+        Ok(solution)
     }
 }
 ```
@@ -315,6 +315,7 @@ Features:
 ## Phased Roadmap
 
 ### Phase 1: Protocol Definition (1-2 months)
+
 - [ ] AWP protocol specification document
 - [ ] AWW URL format standard
 - [ ] Experience Schema v1.0
@@ -322,6 +323,7 @@ Features:
 - [ ] Security and authentication spec
 
 ### Phase 2: ZeroClaw Implementation (2-3 months)
+
 - [ ] `aww-client` crate creation
 - [ ] Extend `memory` module to support AWW
 - [ ] Extend `coordination` module to support AWW messages
@@ -330,6 +332,7 @@ Features:
 - [ ] Unit tests and integration tests
 
 ### Phase 3: Infrastructure (3-4 months)
+
 - [ ] AWW node implementation (Rust)
 - [ ] Distributed storage backend (IPFS integration)
 - [ ] Vector search engine (embedding-based)
@@ -337,12 +340,14 @@ Features:
 - [ ] Basic web UI for human viewing
 
 ### Phase 4: Ecosystem (ongoing)
+
 - [ ] Multi-language SDKs (Python, Go, TypeScript)
 - [ ] Advanced monitoring dashboard
 - [ ] Agent registry and discovery
 - [ ] Analytics and usage metrics
 
 ### Phase 5: Decentralization (future)
+
 - [ ] Blockchain-based URL ownership (optional)
 - [ ] DAO governance mechanism
 - [ ] Economic incentives (token-based, optional)
@@ -353,7 +358,7 @@ Features:
 
 ### 1. Decentralized vs Centralized
 
-**Decision: Hybrid Model**
+#### Decision: Hybrid Model
 
 - **Bootstrapping phase**: Single centralized node operated by maintainers
 - **Growth phase**: Multiple trusted nodes
@@ -363,7 +368,7 @@ Features:
 
 ### 2. Identity & Authentication
 
-**Decision: DID (Decentralized Identifier)**
+#### Decision: DID (Decentralized Identifier)
 
 ```rust
 pub enum Did {
@@ -378,7 +383,7 @@ pub enum Did {
 
 ### 3. Storage Layer
 
-**Decision: Tiered Storage**
+#### Decision: Tiered Storage
 
 | Tier | Technology | Use Case |
 |------|------------|----------|
@@ -390,7 +395,7 @@ pub enum Did {
 
 ### 4. Search Engine
 
-**Decision: Hybrid Search**
+#### Decision: Hybrid Search
 
 - **Vector similarity**: Semantic understanding
 - **Keyword BM25**: Exact match
@@ -400,7 +405,7 @@ pub enum Did {
 
 ### 5. Quality Assurance
 
-**Decision: Multi-dimensional**
+#### Decision: Multi-dimensional
 
 - **Execution verification**: For reproducible experiences
 - **Community endorsement**: Reputation-based
@@ -425,26 +430,31 @@ pub enum Did {
 ## Open Questions
 
 ### Trust & Verification
+
 - How to prevent low-quality or malicious experiences?
 - Should we require execution verification for code solutions?
 - What should the reputation system look like?
 
 ### Privacy & Security
+
 - How to protect sensitive/corporate experiences?
 - Should we support encrypted storage?
 - How to implement access control lists?
 
 ### Incentives
+
 - Why would agents share experiences?
 - Reciprocity? Reputation points? Economic tokens?
 - Should we implement a "credit" system?
 
 ### Scalability
+
 - How to handle millions of experiences?
 - Should we shard by category/time/popularity?
 - How to handle hot partitions?
 
 ### Governance
+
 - Who decides protocol evolution?
 - Foundation-based? DAO? Community consensus?
 - How to handle forks?
@@ -478,10 +488,10 @@ pub enum Did {
 ## References
 
 - [Tim Berners-Lee's original WWW proposal](http://www.w3.org/History/1989/proposal.html)
-- [A2A Protocol (Google)](https://deepmind.google/research/pub/a2a/)
+- [A2A Protocol (Google)](https://github.com/google/A2A)
 - [MCP (Anthropic)](https://modelcontextprotocol.io/)
 - [SAMEP: Secure Agent Memory Exchange Protocol](https://arxiv.org/abs/2507.10562)
-- [IPFS Design Paper](https://ipfs.io/ipns/QamsQeUvPnb2kxcjLmnhEYC4hSPJcTiwXTEKYDsMHLyH7/)
+- [IPFS Design Overview](https://docs.ipfs.tech/concepts/how-ipfs-works/)
 - [DID Core Specification](https://www.w3.org/TR/did-core/)
 
 ---

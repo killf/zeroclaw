@@ -612,6 +612,9 @@ fn mask_sensitive_fields(config: &crate::config::Config) -> crate::config::Confi
     mask_optional_secret(&mut masked.web_fetch.api_key);
     mask_optional_secret(&mut masked.web_search.api_key);
     mask_optional_secret(&mut masked.web_search.brave_api_key);
+    mask_optional_secret(&mut masked.web_search.perplexity_api_key);
+    mask_optional_secret(&mut masked.web_search.exa_api_key);
+    mask_optional_secret(&mut masked.web_search.jina_api_key);
     mask_optional_secret(&mut masked.storage.provider.config.db_url);
     if let Some(cloudflare) = masked.tunnel.cloudflare.as_mut() {
         mask_required_secret(&mut cloudflare.token);
@@ -706,7 +709,10 @@ fn restore_masked_sensitive_fields(
     restore_optional_secret(&mut incoming.proxy.http_proxy, &current.proxy.http_proxy);
     restore_optional_secret(&mut incoming.proxy.https_proxy, &current.proxy.https_proxy);
     restore_optional_secret(&mut incoming.proxy.all_proxy, &current.proxy.all_proxy);
-    restore_optional_secret(&mut incoming.transcription.api_key, &current.transcription.api_key);
+    restore_optional_secret(
+        &mut incoming.transcription.api_key,
+        &current.transcription.api_key,
+    );
     restore_optional_secret(
         &mut incoming.browser.computer_use.api_key,
         &current.browser.computer_use.api_key,
@@ -719,6 +725,18 @@ fn restore_masked_sensitive_fields(
     restore_optional_secret(
         &mut incoming.web_search.brave_api_key,
         &current.web_search.brave_api_key,
+    );
+    restore_optional_secret(
+        &mut incoming.web_search.perplexity_api_key,
+        &current.web_search.perplexity_api_key,
+    );
+    restore_optional_secret(
+        &mut incoming.web_search.exa_api_key,
+        &current.web_search.exa_api_key,
+    );
+    restore_optional_secret(
+        &mut incoming.web_search.jina_api_key,
+        &current.web_search.jina_api_key,
     );
     restore_optional_secret(
         &mut incoming.storage.provider.config.db_url,
@@ -932,7 +950,10 @@ mod tests {
         assert_eq!(hydrated.config_path, current.config_path);
         assert_eq!(hydrated.workspace_dir, current.workspace_dir);
         assert_eq!(hydrated.api_key, current.api_key);
-        assert_eq!(hydrated.transcription.api_key, current.transcription.api_key);
+        assert_eq!(
+            hydrated.transcription.api_key,
+            current.transcription.api_key
+        );
         assert_eq!(hydrated.default_model.as_deref(), Some("gpt-4.1-mini"));
         assert_eq!(
             hydrated.reliability.api_keys,

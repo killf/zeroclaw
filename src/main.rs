@@ -800,7 +800,13 @@ async fn main() -> Result<()> {
         eprintln!("Warning: Failed to install default crypto provider: {e:?}");
     }
 
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            eprintln!("Error parsing command-line arguments: {e}");
+            e.exit();
+        }
+    };
 
     if let Some(config_dir) = &cli.config_dir {
         if config_dir.trim().is_empty() {

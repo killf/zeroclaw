@@ -56,20 +56,7 @@ impl McpServer {
         })?;
 
         // Initialize handshake
-        let id = 1u64;
-        let init_req = JsonRpcRequest::new(
-            id,
-            "initialize",
-            json!({
-                "protocolVersion": MCP_PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": {
-                    "name": "zeroclaw",
-                    "version": env!("CARGO_PKG_VERSION")
-                }
-            }),
-        );
-
+        let init_req = JsonRpcRequest::initialize();
         let init_resp = timeout(
             Duration::from_secs(RECV_TIMEOUT_SECS),
             transport.send_and_recv(&init_req),

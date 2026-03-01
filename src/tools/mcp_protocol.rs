@@ -5,6 +5,7 @@
 //! and receives (Deserialize) JSON-RPC messages.
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
 pub const JSONRPC_VERSION: &str = "2.0";
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
@@ -37,6 +38,21 @@ impl JsonRpcRequest {
             method: method.into(),
             params: Some(params),
         }
+    }
+
+    pub fn initialize() -> Self {
+        Self::new(
+            1u64,
+            "initialize",
+            json!({
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {
+                    "name": "zeroclaw",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            }),
+        )
     }
 
     /// Create a notification — no id, no response expected from server.
